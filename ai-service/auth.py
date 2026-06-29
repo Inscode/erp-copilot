@@ -6,7 +6,7 @@ Python call FMS spring boot api using jwt
 
 import httpx
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from config import FINANCE_API_BASE_URL, COPILOT_USERNAME, COPILOT_PASSWORD
 
 _token: str | None = None
@@ -79,7 +79,7 @@ def _needs_refresh() -> bool:
     if _token is None or _expires_at is None:
         return True
 
-    seconds_remaining = (_expires_at - datetime.utcnow()).total_seconds()
+    seconds_remaining = (_expires_at - datetime.now(timezone.utc)).total_seconds()
     return seconds_remaining < REFRESH_THRESHOLD_SECONDS
 
 
