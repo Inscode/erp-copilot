@@ -217,6 +217,12 @@ def respond_node(state: dict) -> dict:
     tool = state.get("tool")
     tool_result = state.get("tool_result")
 
+    if isinstance(tool_result, dict) and "error" in tool_result:
+        return {
+            **state,
+            "response": f"Sorry, I couldn't retrieve the data: {tool_result['error']}"
+        }
+
     if tool == "outstanding_bills" and isinstance(tool_result, list):
         display_data = _summarize_outstanding(tool_result)
     else:
