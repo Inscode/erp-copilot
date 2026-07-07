@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Bot, User, AlertCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Send, Loader2, Bot, User, AlertCircle, LogOut } from "lucide-react";
 
-// ── Types ─────────────────────────────────────────────────────
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -13,7 +13,6 @@ interface Message {
   error?: boolean;
 }
 
-// ── Suggested questions ───────────────────────────────────────
 const SUGGESTIONS = [
   "Who should I call today?",
   "How is RAINCO doing?",
@@ -23,20 +22,43 @@ const SUGGESTIONS = [
   "Show all Platinum customer bills",
 ];
 
-// ── Main component ────────────────────────────────────────────
+// Renders **bold** markdown inline, preserving other text as-is
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+// Renders a full message string with line breaks and inline bold
+function MessageContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className="text-sm leading-relaxed space-y-1">
+      {lines.map((line, i) => (
+        <p key={i} className={line === "" ? "h-2" : ""}>
+          {renderInline(line)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const router = useRouter();
 
-  // Auto scroll to bottom on new message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Send message
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
 
@@ -62,32 +84,33 @@ export default function ChatInterface() {
 
       const data = await res.json();
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.response,
-        toolUsed: data.tool_used,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content:
-          "Sorry, I could not connect to the AI service. Please try again.",
-        timestamp: new Date(),
-        error: true,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.response,
+          toolUsed: data.tool_used,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I could not connect to the AI service. Please try again.",
+          timestamp: new Date(),
+          error: true,
+        },
+      ]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
     }
   };
 
-  // Handle Enter key
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -95,7 +118,11 @@ export default function ChatInterface() {
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────
+  const handleLogout = async () => {
+    await fetch("/api/auth", { method: "DELETE" });
+    router.push("/login");
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -107,37 +134,41 @@ export default function ChatInterface() {
           <h1 className="text-white font-semibold text-sm">ERP Copilot</h1>
           <p className="text-gray-400 text-xs">Ghanim Enterprises</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-500"></span>
-          <span className="text-gray-400 text-xs">Online</span>
+        <div className="ml-auto flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            <span className="text-gray-400 text-xs">Online</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            className="text-gray-500 hover:text-gray-300 transition-colors duration-200"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {/* Empty state */}
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-8">
             <div className="text-center">
               <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mx-auto mb-4">
                 <Bot size={32} className="text-white" />
               </div>
-              <h2 className="text-white text-xl font-semibold mb-2">
-                ERP Copilot
-              </h2>
+              <h2 className="text-white text-xl font-semibold mb-2">ERP Copilot</h2>
               <p className="text-gray-400 text-sm max-w-sm">
                 Ask me anything about your business — outstanding bills,
                 customer profiles, collections, and more.
               </p>
             </div>
-
-            {/* Suggestions */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => sendMessage(s)}
-                  className="text-left px-4 py-3 rounded-xl border border-gray-700 
+                  className="text-left px-4 py-3 rounded-xl border border-gray-700
                              bg-gray-900 hover:bg-gray-800 hover:border-gray-600
                              text-gray-300 text-sm transition-all duration-200"
                 >
@@ -148,25 +179,17 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {/* Message list */}
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-3 ${
-              msg.role === "user" ? "justify-end" : "justify-start"
-            }`}
+            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            {/* Assistant avatar */}
             {msg.role === "assistant" && (
-              <div
-                className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-600 
-                              flex items-center justify-center mt-1"
-              >
+              <div className="shrink-0 w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mt-1">
                 <Bot size={16} className="text-white" />
               </div>
             )}
 
-            {/* Message bubble */}
             <div
               className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                 msg.role === "user"
@@ -176,65 +199,43 @@ export default function ChatInterface() {
                     : "bg-gray-800 text-gray-100 rounded-tl-sm"
               }`}
             >
-              {/* Error icon */}
               {msg.error && (
                 <div className="flex items-center gap-2 mb-2">
                   <AlertCircle size={14} className="text-red-400" />
-                  <span className="text-red-400 text-xs font-medium">
-                    Connection Error
-                  </span>
+                  <span className="text-red-400 text-xs font-medium">Connection Error</span>
                 </div>
               )}
 
-              {/* Tool badge */}
               {msg.toolUsed && (
                 <div className="mb-2">
-                  <span
-                    className="text-xs bg-blue-900 text-blue-300 
-                                   px-2 py-0.5 rounded-full"
-                  >
+                  <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">
                     {msg.toolUsed}
                   </span>
                 </div>
               )}
 
-              {/* Content — render markdown-like formatting */}
-              <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                {msg.content}
-              </div>
+              {msg.role === "assistant" ? (
+                <MessageContent content={msg.content} />
+              ) : (
+                <p className="text-sm leading-relaxed">{msg.content}</p>
+              )}
 
-              {/* Timestamp */}
-              <div
-                className={`text-xs mt-2 ${
-                  msg.role === "user" ? "text-blue-200" : "text-gray-500"
-                }`}
-              >
-                {msg.timestamp.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+              <div className={`text-xs mt-2 ${msg.role === "user" ? "text-blue-200" : "text-gray-500"}`}>
+                {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </div>
             </div>
 
-            {/* User avatar */}
             {msg.role === "user" && (
-              <div
-                className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-700 
-                              flex items-center justify-center mt-1"
-              >
+              <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center mt-1">
                 <User size={16} className="text-gray-300" />
               </div>
             )}
           </div>
         ))}
 
-        {/* Loading indicator */}
         {loading && (
           <div className="flex gap-3 justify-start">
-            <div
-              className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-600 
-                            flex items-center justify-center"
-            >
+            <div className="shrink-0 w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
               <Bot size={16} className="text-white" />
             </div>
             <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
@@ -266,7 +267,7 @@ export default function ChatInterface() {
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || loading}
-            className="flex-shrink-0 w-11 h-11 rounded-xl bg-blue-600
+            className="shrink-0 w-11 h-11 rounded-xl bg-blue-600
                        hover:bg-blue-500 disabled:bg-gray-700
                        disabled:cursor-not-allowed flex items-center
                        justify-center transition-colors duration-200"
